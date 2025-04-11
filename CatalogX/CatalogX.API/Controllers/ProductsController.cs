@@ -67,5 +67,77 @@ namespace CatalogX.API.Controllers
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
 
         }
+
+        [HttpGet("advanced")]
+        public async Task<IActionResult> GetProductsAdvanced([FromQuery] ProductQueryParameters queryParams)
+        {
+            IQueryable<Product> query = _dbContext.Products.AsNoTracking();
+
+            if (queryParams.MinPrice.HasValue)
+                query = query.Where(p => p.Price >= queryParams.MinPrice.Value);
+
+            if (queryParams.MaxPrice.HasValue)
+                query = query.Where(p => p.Price <= queryParams.MaxPrice.Value);
+
+            if (!string.IsNullOrEmpty(queryParams.Category))
+                query = query.Where(p => p.Category == queryParams.Category);
+
+            if (!string.IsNullOrEmpty(queryParams.Search))
+            {
+                query = query.Where(p => p.Name.Contains(queryParams.Search) ||
+                p.Description.Contains(queryParams.Search));
+            }
+
+            var totalCount = await query.CountAsync();
+
+            var products = await query
+                .OrderBy(p => p.Id)
+                .Skip((queryParams.PageNumber - 1) * queryParams.PageSize)
+                .Take(queryParams.PageSize)
+                .ToListAsync();
+
+            var response = new
+            {
+                totalCount = totalCount,
+                PageNumber = queryParams.PageNumber,
+                PageSize = queryParams.PageSize,
+                Data = products
+            };
+
+            return Ok(response);
+
+        }
+
+        [HttpGet("advancedPoor")]
+        public async Task<IActionResult> GetProductsAdvancedPoor([FromQuery] ProductQueryParameters queryParams)
+        {
+            var query = _dbContext.Products
+            .Where(p =>
+                (!queryParams.MinPrice.HasValue || p.Price >= queryParams.MinPrice.Value) &&
+                (!queryParams.MaxPrice.HasValue || p.Price <= queryParams.MaxPrice.Value) &&
+                (string.IsNullOrEmpty(queryParams.Category) || p.Category == queryParams.Category) &&
+                (string.IsNullOrEmpty(queryParams.Search) ||
+                    p.Name.Contains(queryParams.Search) ||
+                    p.Description.Contains(queryParams.Search)));
+
+            var totalCount = await query.CountAsync();
+
+            var products = await query
+                .OrderBy(p => p.Id)
+                .Skip((queryParams.PageNumber - 1) * queryParams.PageSize)
+                .Take(queryParams.PageSize)
+                .ToListAsync();
+
+            var response = new
+            {
+                totalCount = totalCount,
+                PageNumber = queryParams.PageNumber,
+                PageSize = queryParams.PageSize,
+                Data = products
+            };
+
+            return Ok(response);
+
+        }
     }
 }
