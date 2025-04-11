@@ -62,7 +62,7 @@ namespace CatalogX.API.Controllers
             await _dbContext.SaveChangesAsync();
 
             var db = _redis.GetDatabase();
-            await db.KeyDeleteAsync("product_list");
+            await db.KeyDeleteAsync("products_list");
 
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
 
