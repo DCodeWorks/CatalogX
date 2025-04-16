@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CatalogX.Infrastructure.Migrations
 {
     [DbContext(typeof(CatalogXDbContext))]
-    [Migration("20250410093258_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20250415080318_InitialMigration")]
+    partial class InitialMigration
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

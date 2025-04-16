@@ -13,12 +13,15 @@ namespace CatalogX.API.Controllers
     {
         private readonly CatalogXDbContext _dbContext;
         private readonly IConnectionMultiplexer _redis;
+        private readonly ILogger<ProductsController> _logger;
         public ProductsController(
             CatalogXDbContext catalogXDbContext,
-            IConnectionMultiplexer redis)
+            IConnectionMultiplexer redis,
+            ILogger<ProductsController> logger)
         {
             _dbContext = catalogXDbContext;
             _redis = redis;
+            _logger = logger;
         }
 
         [HttpGet]
@@ -71,6 +74,8 @@ namespace CatalogX.API.Controllers
         [HttpGet("advanced")]
         public async Task<IActionResult> GetProductsAdvanced([FromQuery] ProductQueryParameters queryParams)
         {
+            _logger.LogInformation("Received request for products with search parameter: {Search}", queryParams.Search);
+
             IQueryable<Product> query = _dbContext.Products.AsNoTracking();
 
             if (queryParams.MinPrice.HasValue)
@@ -82,10 +87,19 @@ namespace CatalogX.API.Controllers
             if (!string.IsNullOrEmpty(queryParams.Category))
                 query = query.Where(p => p.Category == queryParams.Category);
 
-            if (!string.IsNullOrEmpty(queryParams.Search))
+            /*if (!string.IsNullOrEmpty(queryParams.Search))
             {
                 query = query.Where(p => p.Name.Contains(queryParams.Search) ||
                 p.Description.Contains(queryParams.Search));
+            }*/
+
+            // Use full-text search for the Search parameter
+            if (!string.IsNullOrEmpty(queryParams.Search))
+            {
+                var quotedSearch = $"\"{queryParams.Search}\"";
+                // This leverages SQL Server's CONTAINS function behind the scenes
+                query = query.Where(p => EF.Functions.Contains(p.Name, quotedSearch)
+                                         || EF.Functions.Contains(p.Description, quotedSearch));
             }
 
             var totalCount = await query.CountAsync();
@@ -95,6 +109,8 @@ namespace CatalogX.API.Controllers
                 .Skip((queryParams.PageNumber - 1) * queryParams.PageSize)
                 .Take(queryParams.PageSize)
                 .ToListAsync();
+
+            _logger.LogInformation("Returning {Count} products for page {PageNumber}", products.Count, queryParams.PageNumber);
 
             var response = new
             {

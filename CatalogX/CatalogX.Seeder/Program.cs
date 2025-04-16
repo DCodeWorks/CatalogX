@@ -21,7 +21,7 @@ using (var dbContext = new CatalogXDbContext(optionsBuilder.Options))
     Console.WriteLine("Starting product seeding...");
 
     // Set the desired number of records to seed (e.g., 1,000,000)
-    int totalRecords = 10000000;
+    int totalRecords =  5000000;
     Console.WriteLine($"Seeding {totalRecords} products...");
 
     await DataSeeder.SeedProducts(dbContext, totalRecords, batchSize: 10000);
