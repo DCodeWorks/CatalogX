@@ -19,6 +19,9 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 builder.Services.AddDbContext<CatalogXDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+builder.Services.AddDbContext<ReplicaCatalogXDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("ReadReplicaConnection")));
+
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 {
     var configuration = builder.Configuration.GetSection("Redis")["Connection"];

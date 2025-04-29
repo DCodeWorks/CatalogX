@@ -11,15 +11,18 @@ namespace CatalogX.API.Controllers
     [Route("api/[controller]")]
     public class ProductsController : ControllerBase
     {
-        private readonly CatalogXDbContext _dbContext;
+        private readonly CatalogXDbContext _writeDbContext;
+        private readonly ReplicaCatalogXDbContext _readDbContext;
         private readonly IConnectionMultiplexer _redis;
         private readonly ILogger<ProductsController> _logger;
         public ProductsController(
             CatalogXDbContext catalogXDbContext,
+            ReplicaCatalogXDbContext replicaCatalogXDbContext,
             IConnectionMultiplexer redis,
             ILogger<ProductsController> logger)
         {
-            _dbContext = catalogXDbContext;
+            _writeDbContext = catalogXDbContext;
+            _readDbContext = replicaCatalogXDbContext;
             _redis = redis;
             _logger = logger;
         }
@@ -39,7 +42,7 @@ namespace CatalogX.API.Controllers
                 return Ok(products);
             }
 
-            var dbProducts = await _dbContext.Products.AsNoTracking().ToListAsync();
+            var dbProducts = await _writeDbContext.Products.AsNoTracking().ToListAsync();
 
             var serializedProducts = JsonSerializer.Serialize(dbProducts);
             await db.StringSetAsync(cacheKey, serializedProducts, TimeSpan.FromMinutes(5));
@@ -50,7 +53,7 @@ namespace CatalogX.API.Controllers
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetProduct(int id)
         {
-            var product = await _dbContext.Products.SingleOrDefaultAsync(x => x.Id == id);
+            var product = await _readDbContext.Products.SingleOrDefaultAsync(x => x.Id == id);
 
             if (product == null)
                 return NotFound();
@@ -61,8 +64,8 @@ namespace CatalogX.API.Controllers
         [HttpPost]
         public async Task<IActionResult> createProduct([FromBody] Product product)
         {
-            _dbContext.Products.Add(product);
-            await _dbContext.SaveChangesAsync();
+            _writeDbContext.Products.Add(product);
+            await _writeDbContext.SaveChangesAsync();
 
             var db = _redis.GetDatabase();
             await db.KeyDeleteAsync("products_list");
@@ -76,7 +79,7 @@ namespace CatalogX.API.Controllers
         {
             _logger.LogInformation("Received request for products with search parameter: {Search}", queryParams.Search);
 
-            IQueryable<Product> query = _dbContext.Products.AsNoTracking();
+            IQueryable<Product> query = _readDbContext.Products.AsNoTracking();
 
             if (queryParams.MinPrice.HasValue)
                 query = query.Where(p => p.Price >= queryParams.MinPrice.Value);
@@ -127,7 +130,7 @@ namespace CatalogX.API.Controllers
         [HttpGet("advancedPoor")]
         public async Task<IActionResult> GetProductsAdvancedPoor([FromQuery] ProductQueryParameters queryParams)
         {
-            var query = _dbContext.Products
+            var query = _writeDbContext.Products
             .Where(p =>
                 (!queryParams.MinPrice.HasValue || p.Price >= queryParams.MinPrice.Value) &&
                 (!queryParams.MaxPrice.HasValue || p.Price <= queryParams.MaxPrice.Value) &&

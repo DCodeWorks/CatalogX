@@ -1,17 +1,4 @@
 services:
-  sqlserver:
-    build:
-      context: ./sqlserver
-      dockerfile: Dockerfile
-    image: sqlserver-fts:latest
-    container_name: sqlserver
-    ports:
-      - "1433:1433"
-    environment:
-      ACCEPT_EULA: "Y"
-      SA_PASSWORD: "YourStrong!Passw0rd"
-    networks:
-      - backend
   redis:
     image: redis:latest
     container_name: redis
