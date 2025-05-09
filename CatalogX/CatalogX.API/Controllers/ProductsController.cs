@@ -12,7 +12,7 @@ namespace CatalogX.API.Controllers
     public class ProductsController : ControllerBase
     {
         private readonly CatalogXDbContext _writeDbContext;
-        private readonly ReplicaCatalogXDbContext _readDbContext;
+        //private readonly ReplicaCatalogXDbContext _readDbContext;
         private readonly IConnectionMultiplexer _redis;
         private readonly ILogger<ProductsController> _logger;
         public ProductsController(
@@ -22,38 +22,15 @@ namespace CatalogX.API.Controllers
             ILogger<ProductsController> logger)
         {
             _writeDbContext = catalogXDbContext;
-            _readDbContext = replicaCatalogXDbContext;
+            //_readDbContext = replicaCatalogXDbContext;
             _redis = redis;
             _logger = logger;
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> GetProducts()
-        {
-            // Simple caching key for demonstration purposes.
-            var cacheKey = "products_list";
-
-            var db = _redis.GetDatabase();
-            var cachedProducts = await db.StringGetAsync(cacheKey);
-
-            if (cachedProducts.HasValue)
-            {
-                var products = JsonSerializer.Deserialize<List<Product>>(cachedProducts);
-                return Ok(products);
-            }
-
-            var dbProducts = await _writeDbContext.Products.AsNoTracking().ToListAsync();
-
-            var serializedProducts = JsonSerializer.Serialize(dbProducts);
-            await db.StringSetAsync(cacheKey, serializedProducts, TimeSpan.FromMinutes(5));
-
-            return Ok(dbProducts);
         }
 
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetProduct(int id)
         {
-            var product = await _readDbContext.Products.SingleOrDefaultAsync(x => x.Id == id);
+            var product = await _writeDbContext.Products.SingleOrDefaultAsync(x => x.Id == id);
 
             if (product == null)
                 return NotFound();
@@ -67,19 +44,19 @@ namespace CatalogX.API.Controllers
             _writeDbContext.Products.Add(product);
             await _writeDbContext.SaveChangesAsync();
 
-            var db = _redis.GetDatabase();
-            await db.KeyDeleteAsync("products_list");
+            //var db = _redis.GetDatabase();
+            //await db.KeyDeleteAsync("products_list");
 
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
 
         }
 
-        [HttpGet("advanced")]
-        public async Task<IActionResult> GetProductsAdvanced([FromQuery] ProductQueryParameters queryParams)
+        [HttpGet]
+        public async Task<IActionResult> GetProducts([FromQuery] ProductQueryParameters queryParams)
         {
             _logger.LogInformation("Received request for products with search parameter: {Search}", queryParams.Search);
 
-            IQueryable<Product> query = _readDbContext.Products.AsNoTracking();
+            IQueryable<Product> query = _writeDbContext.Products.AsNoTracking();
 
             if (queryParams.MinPrice.HasValue)
                 query = query.Where(p => p.Price >= queryParams.MinPrice.Value);
@@ -97,13 +74,13 @@ namespace CatalogX.API.Controllers
             }*/
 
             // Use full-text search for the Search parameter
-            if (!string.IsNullOrEmpty(queryParams.Search))
+            /*if (!string.IsNullOrEmpty(queryParams.Search))
             {
                 var quotedSearch = $"\"{queryParams.Search}\"";
                 // This leverages SQL Server's CONTAINS function behind the scenes
                 query = query.Where(p => EF.Functions.Contains(p.Name, quotedSearch)
                                          || EF.Functions.Contains(p.Description, quotedSearch));
-            }
+            }*/
 
             var totalCount = await query.CountAsync();
 
@@ -127,36 +104,36 @@ namespace CatalogX.API.Controllers
 
         }
 
-        [HttpGet("advancedPoor")]
-        public async Task<IActionResult> GetProductsAdvancedPoor([FromQuery] ProductQueryParameters queryParams)
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteProduct(int id)
         {
-            var query = _writeDbContext.Products
-            .Where(p =>
-                (!queryParams.MinPrice.HasValue || p.Price >= queryParams.MinPrice.Value) &&
-                (!queryParams.MaxPrice.HasValue || p.Price <= queryParams.MaxPrice.Value) &&
-                (string.IsNullOrEmpty(queryParams.Category) || p.Category == queryParams.Category) &&
-                (string.IsNullOrEmpty(queryParams.Search) ||
-                    p.Name.Contains(queryParams.Search) ||
-                    p.Description.Contains(queryParams.Search)));
+            var product = await _writeDbContext.Products.FindAsync(id);
 
-            var totalCount = await query.CountAsync();
+            if (product == null)
+                return NotFound();
 
-            var products = await query
-                .OrderBy(p => p.Id)
-                .Skip((queryParams.PageNumber - 1) * queryParams.PageSize)
-                .Take(queryParams.PageSize)
-                .ToListAsync();
+            _writeDbContext.Products.Remove(product);
+            await _writeDbContext.SaveChangesAsync();
 
-            var response = new
-            {
-                totalCount = totalCount,
-                PageNumber = queryParams.PageNumber,
-                PageSize = queryParams.PageSize,
-                Data = products
-            };
+            return Ok(product);
+        }
 
-            return Ok(response);
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateProduct(int id,[FromBody] Product product)
+        {
+            var productFromDB = await _writeDbContext.Products.FindAsync(id);
 
+            if (product == null)
+                return NotFound();
+
+            productFromDB.Name = product.Name;
+            productFromDB.Description = product.Description;    
+            productFromDB.Category = product.Category;
+            productFromDB.Price = product.Price;
+
+            await _writeDbContext.SaveChangesAsync();
+
+            return Ok(product);
         }
     }
 }
