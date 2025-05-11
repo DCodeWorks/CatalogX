@@ -44,8 +44,11 @@ namespace CatalogX.API.Controllers
             _writeDbContext.Products.Add(product);
             await _writeDbContext.SaveChangesAsync();
 
-            //var db = _redis.GetDatabase();
-            //await db.KeyDeleteAsync("products_list");
+            var server = _redis.GetServer(_redis.GetEndPoints()[0]);
+            foreach (var key in server.Keys(pattern: "products:adv:*"))
+            {
+                await _redis.GetDatabase().KeyDeleteAsync(key);
+            }
 
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
 
@@ -54,6 +57,19 @@ namespace CatalogX.API.Controllers
         [HttpGet]
         public async Task<IActionResult> GetProducts([FromQuery] ProductQueryParameters queryParams)
         {
+            var db = _redis.GetDatabase();
+
+            var cacheKey = $"products:adv:pg={queryParams.PageNumber}:sz={queryParams.PageSize}"
+                     + (string.IsNullOrEmpty(queryParams.Category) ? "" : $":cat={queryParams.Category}")
+                     + (string.IsNullOrEmpty(queryParams.Search) ? "" : $":q={queryParams.Search}");
+
+            var cached = await db.StringGetAsync(cacheKey);
+            if (cached.HasValue)
+            {
+                _logger.LogInformation("Cache hit for {Key}", cacheKey);
+                return Content(cached, "application/json");
+            }
+
             _logger.LogInformation("Received request for products with search parameter: {Search}", queryParams.Search);
 
             IQueryable<Product> query = _writeDbContext.Products.AsNoTracking();
@@ -74,13 +90,13 @@ namespace CatalogX.API.Controllers
             }*/
 
             // Use full-text search for the Search parameter
-            /*if (!string.IsNullOrEmpty(queryParams.Search))
+            if (!string.IsNullOrEmpty(queryParams.Search))
             {
                 var quotedSearch = $"\"{queryParams.Search}\"";
                 // This leverages SQL Server's CONTAINS function behind the scenes
                 query = query.Where(p => EF.Functions.Contains(p.Name, quotedSearch)
                                          || EF.Functions.Contains(p.Description, quotedSearch));
-            }*/
+            }
 
             var totalCount = await query.CountAsync();
 
@@ -100,6 +116,9 @@ namespace CatalogX.API.Controllers
                 Data = products
             };
 
+            var json = JsonSerializer.Serialize(response);
+            await db.StringSetAsync(cacheKey, json, TimeSpan.FromSeconds(30));
+
             return Ok(response);
 
         }
@@ -114,6 +133,12 @@ namespace CatalogX.API.Controllers
 
             _writeDbContext.Products.Remove(product);
             await _writeDbContext.SaveChangesAsync();
+
+            var server = _redis.GetServer(_redis.GetEndPoints()[0]);
+            foreach (var key in server.Keys(pattern: "products:adv:*"))
+            {
+                await _redis.GetDatabase().KeyDeleteAsync(key);
+            }
 
             return Ok(product);
         }
@@ -132,6 +157,12 @@ namespace CatalogX.API.Controllers
             productFromDB.Price = product.Price;
 
             await _writeDbContext.SaveChangesAsync();
+
+            var server = _redis.GetServer(_redis.GetEndPoints()[0]);
+            foreach (var key in server.Keys(pattern: "products:adv:*"))
+            {
+                await _redis.GetDatabase().KeyDeleteAsync(key);
+            }
 
             return Ok(product);
         }

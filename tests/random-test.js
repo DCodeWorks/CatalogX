@@ -30,23 +30,30 @@ export const options = {
             executor: 'constant-vus',
             exec: 'creation',
             vus: 2,
-            duration: '1m',
-            startTime: '0s',
+            duration: '10s',
+            startTime: '50s',
         },
         updateTest: {
             executor: 'constant-vus',
             exec: 'updateItem',
             vus: 2,
-            duration: '1m',
-            startTime: '0s',
+            duration: '10s',
+            startTime: '50s',
         },
         deleteTest: {
             executor: 'constant-vus',
             exec: 'deleteItem',
             vus: 2,
-            duration: '1m',
-            startTime: '0s',
+            duration: '10s',
+            startTime: '50s',
         },
+        cacheTest: {
+            executor: 'constant-vus',
+            exec: 'cacheTest',
+            vus: 5,
+            duration: '50s',
+            startTime: '0s',
+        }
     },
     thresholds: {
         'http_req_duration{scenario:paginationTest}': ['p(95)<300'],
@@ -55,6 +62,7 @@ export const options = {
         'http_req_duration{scenario:creationTest}': ['p(95)<500'],
         'http_req_duration{scenario:updateTest}': ['p(95)<500'],
         'http_req_duration{scenario:deleteTest}': ['p(95)<500'],
+        'http_req_duration{scenario:cacheTest}': ['p(95)<50'],
         'http_req_failed': ['rate<0.01'],
     },
 };
@@ -161,4 +169,27 @@ export function deleteItem() {
     );
     check(res, { 'delete status 200|204': (r) => r.status === 200 || r.status === 204 });
     sleep(0.1);
+}
+
+export function cacheTest() {
+    const url = `${API_BASE}`
+        + '?PageNumber=1'
+        + '&PageSize=20'
+        + '&Category=Category%201';
+
+    const res1 = http.get(url, { tags: { scenario: 'cacheTest' } });
+
+    check(res1, {
+        'cacheTest first fetch status 200': (r) => r.status === 200
+    });
+
+    sleep(0.2);
+
+    const res2 = http.get(url, { tags: { scenario: 'cacheTest' } });
+    check(res2, {
+        'cacheTest second fetch status 200': (r) => r.status === 200,
+        'cacheTest fast response <50ms': (r) => r.timings.duration < 50
+    });
+
+    sleep(0.2);
 }
